@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 from typing import Any
 from urllib.parse import urlencode
 
@@ -44,7 +45,9 @@ def normalize_axis_code(value: Any) -> str:
     """Normalize axis code values for robust joins across sources."""
     if value is None:
         return ""
-    return str(value).strip().upper()
+    raw = str(value).strip().upper()
+    # Harmonize codes like 'PLSA-007', 'PLSA 007', and 'PLSA007' to the same key.
+    return re.sub(r"[^A-Z0-9]", "", raw)
 
 
 def validate_xyz_columns(df: pd.DataFrame, columns: tuple[str, str, str] = ("x", "y", "z")) -> None:
