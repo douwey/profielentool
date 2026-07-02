@@ -1,0 +1,21 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+.venv/
+venv/
+
+# Streamlit and local config
+.streamlit/secrets.toml
+
+# Test and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE and OS
+.vscode/*.log
+.DS_Store
+Thumbs.db

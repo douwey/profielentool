@@ -1,0 +1,11 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": [
+    "tests"
+  ],
+"python.testing.unittestEnabled": false,
+"chat.tools.terminal.autoApprove": {
+    ".\\.venv\\Scripts\\python.exe": true
+}
+}
