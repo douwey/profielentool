@@ -276,6 +276,7 @@ if selected_axis is not None and "Dijktafelh" in selected_axis.index:
 # - Loopt met talud 1:2 omlaag tot kruising met leggerlijn
 # - Volgt daarna de leggerlijn
 ahn_profile_df["z_vrije_ruimte"] = np.nan
+vrije_x_cross: float | None = None
 if selected_axis is not None and "Dijktafelh" in selected_axis.index:
     try:
         dijktafelhoogte = float(selected_axis["Dijktafelh"])
@@ -317,6 +318,7 @@ if selected_axis is not None and "Dijktafelh" in selected_axis.index:
                             break
 
             if x_cross is not None:
+                vrije_x_cross = float(x_cross)
                 mask_before = mask_base & (x_vals <= x_cross)
                 mask_after = mask_base & (x_vals > x_cross)
                 ahn_profile_df.loc[mask_before, "z_vrije_ruimte"] = z_vr_line[mask_before]
@@ -482,6 +484,35 @@ measured_chart = measured_chart.properties(height=line_height)
 line_chart = measured_chart
 if profile_df["z_vrije_ruimte"].notna().any():
     vrije_df = profile_df.dropna(subset=["z_vrije_ruimte"]).copy()
+
+    extra_rows: list[dict[str, float]] = []
+    x_min_line = float(profile_df["distance_from_crossing_m"].min())
+    x_max_line = float(profile_df["distance_from_crossing_m"].max())
+
+    # Dwing een exact startknooppunt op x=4 af voor de weergave van vrije ruimte.
+    if selected_axis is not None and "Dijktafelh" in selected_axis.index and x_min_line <= 4.0 <= x_max_line:
+        try:
+            dth = float(selected_axis["Dijktafelh"])
+            extra_rows.append({"distance_from_crossing_m": 4.0, "z_vrije_ruimte": dth})
+        except (TypeError, ValueError):
+            pass
+
+    # Dwing ook een exact knooppunt op het berekende kruispunt vrije ruimte <-> legger af.
+    if vrije_x_cross is not None and x_min_line <= vrije_x_cross <= x_max_line:
+        z_legger_cross = interpolate_at_x(profile_df, "distance_from_crossing_m", "z_legger", vrije_x_cross)
+        if z_legger_cross is not None:
+            extra_rows.append(
+                {
+                    "distance_from_crossing_m": float(vrije_x_cross),
+                    "z_vrije_ruimte": float(z_legger_cross),
+                }
+            )
+
+    if extra_rows:
+        vrije_df = pd.concat([vrije_df, pd.DataFrame(extra_rows)], ignore_index=True)
+        vrije_df = vrije_df.sort_values("distance_from_crossing_m", kind="mergesort")
+        vrije_df = vrije_df.drop_duplicates(subset=["distance_from_crossing_m"], keep="last")
+
     vrije_chart = (
         alt.Chart(vrije_df)
         .mark_line(color="#1d4ed8", strokeWidth=2)
