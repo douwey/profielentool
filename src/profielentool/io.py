@@ -1,10 +1,10 @@
 from pathlib import Path
 import re
 from typing import Any
-from urllib.parse import urlencode
 
 import geopandas as gpd
 import pandas as pd
+import requests
 from shapely.geometry import LineString
 
 
@@ -146,17 +146,67 @@ def classify_points_by_zone(
 
 
 def read_arcgis_feature_layer(service_url: str, layer_id: int) -> gpd.GeoDataFrame:
-    """Read an ArcGIS FeatureServer layer as GeoJSON."""
-    params = urlencode(
-        {
-            "where": "1=1",
-            "outFields": "*",
-            "outSR": 28992,
-            "f": "geojson",
+    """Read an ArcGIS FeatureServer layer as GeoJSON with retries and paging."""
+    endpoint = f"{service_url.rstrip('/')}/{layer_id}/query"
+    base_params = {
+        "where": "1=1",
+        "outFields": "*",
+        "outSR": 28992,
+        "f": "geojson",
+    }
+
+    page_size = 200
+    max_pages = 1000
+    max_retries = 3
+    timeout_s = 45
+
+    all_features: list[dict[str, Any]] = []
+    offset = 0
+
+    for _ in range(max_pages):
+        params = {
+            **base_params,
+            "resultOffset": offset,
+            "resultRecordCount": page_size,
         }
-    )
-    query_url = f"{service_url.rstrip('/')}/{layer_id}/query?{params}"
-    return gpd.read_file(query_url)
+
+        last_error: Exception | None = None
+        payload: dict[str, Any] | None = None
+        for _attempt in range(max_retries):
+            try:
+                response = requests.get(endpoint, params=params, timeout=timeout_s)
+                response.raise_for_status()
+                payload = response.json()
+                break
+            except Exception as exc:  # pragma: no cover - network/transient branch
+                last_error = exc
+
+        if payload is None:
+            raise ValueError(
+                f"Kon ArcGIS laag {layer_id} niet ophalen na {max_retries} pogingen: {last_error}"
+            )
+
+        if "error" in payload:
+            raise ValueError(f"ArcGIS fout in laag {layer_id}: {payload['error']}")
+
+        features = payload.get("features", [])
+        if not features:
+            break
+
+        all_features.extend(features)
+
+        if len(features) < page_size:
+            break
+
+        offset += len(features)
+
+    if not all_features:
+        return gpd.GeoDataFrame(geometry=[], crs="EPSG:28992")
+
+    gdf = gpd.GeoDataFrame.from_features(all_features, crs="EPSG:28992")
+    if gdf.crs is None:
+        gdf = gdf.set_crs("EPSG:28992", allow_override=True)
+    return gdf
 
 
 def load_regionale_layers_from_remote(
