@@ -99,11 +99,43 @@ folium.GeoJson(
     },
 ).add_to(map_obj)
 
+axis_geojson_kwargs = {
+    "name": "As waterkering",
+    "style_function": lambda _: {"color": "#145da0", "weight": 3},
+}
+if "CODE" in axis_4326.columns:
+    axis_geojson_kwargs["tooltip"] = folium.GeoJsonTooltip(
+        fields=["CODE"],
+        aliases=["CODE"],
+        labels=True,
+        sticky=False,
+    )
+
 folium.GeoJson(
     axis_4326,
-    name="As waterkering",
-    style_function=lambda _: {"color": "#145da0", "weight": 3},
+    **axis_geojson_kwargs,
 ).add_to(map_obj)
+
+axis_label_group = folium.FeatureGroup(name="As CODE labels", show=True)
+if "CODE" in axis_4326.columns:
+    code_rows = axis_4326[axis_4326["CODE"].notna()].copy()
+    for _, axis_row in code_rows.iterrows():
+        code_text = str(axis_row["CODE"]).strip()
+        if not code_text:
+            continue
+        rep_pt = axis_row.geometry.representative_point()
+        folium.Marker(
+            location=[rep_pt.y, rep_pt.x],
+            icon=folium.DivIcon(
+                html=(
+                    f"<div style='font-size:10px;color:#0b3d91;"
+                    "background:rgba(255,255,255,0.7);padding:0 2px;"
+                    "border-radius:2px;'>"
+                    f"{code_text}</div>"
+                )
+            ),
+        ).add_to(axis_label_group)
+axis_label_group.add_to(map_obj)
 
 Draw(
     draw_options={
@@ -189,7 +221,12 @@ if len(intersects) > 0:
     st.caption("Kruisende as-lijn(en)")
     display_cols = [col for col in ["CODE", "NAAM", "Dijktafelh", "Profiel"] if col in crossing_df.columns]
     if display_cols:
-        st.dataframe(crossing_df[display_cols], use_container_width=True)
+        crossing_display_df = crossing_df[display_cols].copy()
+        if "Dijktafelh" in crossing_display_df.columns:
+            crossing_display_df["Dijktafelh"] = pd.to_numeric(
+                crossing_display_df["Dijktafelh"], errors="coerce"
+            ).round(2)
+        st.dataframe(crossing_display_df, use_container_width=True)
     else:
         st.dataframe(crossing_df, use_container_width=True)
 
@@ -617,6 +654,21 @@ zone_chart = zone_chart.properties(width=chart_width_px, height=zone_height)
 
 combined_chart = alt.vconcat(line_chart, zone_chart).resolve_scale(x="shared", color="independent")
 st.altair_chart(combined_chart, use_container_width=False)
+
+st.caption("Legenda dwarsdoorsnede")
+st.markdown(
+        """
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;font-size:13px;">
+    <span><span style="display:inline-block;width:14px;height:3px;background:#2d6a4f;vertical-align:middle;margin-right:6px;"></span>Maaiveld</span>
+    <span><span style="display:inline-block;width:14px;height:3px;background:#1d4ed8;vertical-align:middle;margin-right:6px;"></span>Profiel vrije ruimte</span>
+    <span><span style="display:inline-block;width:14px;height:3px;background:#c1121f;vertical-align:middle;margin-right:6px;"></span>Legger</span>
+    <span><span style="display:inline-block;width:14px;height:10px;background:#ffd56a;vertical-align:middle;margin-right:6px;"></span>Kernzone</span>
+    <span><span style="display:inline-block;width:14px;height:10px;background:#80ed99;vertical-align:middle;margin-right:6px;"></span>Beschermingszone</span>
+    <span><span style="display:inline-block;width:14px;height:10px;background:#d9d9d9;vertical-align:middle;margin-right:6px;"></span>Geen zone</span>
+</div>
+        """,
+        unsafe_allow_html=True,
+)
 
 export_df = profile_df[
     [
