@@ -421,7 +421,7 @@ scale_mode = st.radio(
 
 line_height = 260
 zone_height = 50
-width_reference_px = 1000
+chart_width_px = 1000
 
 if scale_mode == "Gelijke schaal (x=y)":
     x_min = float(profile_df["plot_distance_maaiveld"].min())
@@ -439,7 +439,7 @@ if scale_mode == "Gelijke schaal (x=y)":
     y_span = max(y_max - y_min, 1e-6)
 
     # Keep chart size fixed and adapt only the y-axis domain for visual x=y scaling.
-    target_y_span = x_span * (line_height / width_reference_px)
+    target_y_span = x_span * (line_height / chart_width_px)
     effective_y_span = max(y_span, target_y_span)
     y_center = (y_min + y_max) / 2.0
     y_domain = [y_center - (effective_y_span / 2.0), y_center + (effective_y_span / 2.0)]
@@ -483,7 +483,7 @@ measured_chart = (
         ],
     )
 )
-measured_chart = measured_chart.properties(height=line_height)
+measured_chart = measured_chart.properties(width=chart_width_px, height=line_height)
 
 line_chart = measured_chart
 if profile_df["z_vrije_ruimte"].notna().any():
@@ -528,7 +528,7 @@ if profile_df["z_vrije_ruimte"].notna().any():
                 alt.Tooltip("z_vrije_ruimte:Q", title="Vrije ruimte (m)", format=".2f"),
             ],
         )
-        .properties(height=line_height)
+        .properties(width=chart_width_px, height=line_height)
     )
     line_chart = alt.layer(measured_chart, vrije_chart)
 
@@ -545,7 +545,7 @@ if profile_df["z_legger"].notna().any():
                 alt.Tooltip("z_legger:Q", title="Leggerhoogte (m)", format=".2f"),
             ],
         )
-        .properties(height=line_height)
+        .properties(width=chart_width_px, height=line_height)
     )
     if profile_df["z_vrije_ruimte"].notna().any():
         line_chart = alt.layer(measured_chart, vrije_chart, legger_chart)
@@ -582,7 +582,7 @@ if marker_rows:
                 y=alt.Y("z:Q", title="Hoogte (m NAP)"),
                 tooltip=marker_tooltip,
             )
-            .properties(height=line_height)
+            .properties(width=chart_width_px, height=line_height)
         )
 
     line_chart = alt.layer(*marker_layers)
@@ -609,10 +609,10 @@ zone_chart = (
         ],
     )
 )
-zone_chart = zone_chart.properties(height=zone_height)
+zone_chart = zone_chart.properties(width=chart_width_px, height=zone_height)
 
 combined_chart = alt.vconcat(line_chart, zone_chart).resolve_scale(x="shared", color="independent")
-st.altair_chart(combined_chart, use_container_width=True)
+st.altair_chart(combined_chart, use_container_width=False)
 
 export_df = profile_df[
     [
