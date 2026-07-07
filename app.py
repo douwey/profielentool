@@ -187,7 +187,11 @@ if len(intersects) > 0:
     crossing_df = pd.DataFrame(crossing_rows)
     crossing_df = crossing_df.sort_values(by="crossing_distance_m", na_position="last").reset_index(drop=True)
     st.caption("Kruisende as-lijn(en)")
-    st.dataframe(crossing_df, use_container_width=True)
+    display_cols = [col for col in ["CODE", "NAAM", "Dijktafelh", "Profiel"] if col in crossing_df.columns]
+    if display_cols:
+        st.dataframe(crossing_df[display_cols], use_container_width=True)
+    else:
+        st.dataframe(crossing_df, use_container_width=True)
 
     if len(crossing_df) > 1:
         crossing_df["CODE_display"] = crossing_df["CODE"].fillna("ONBEKEND").astype(str)
