@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 import altair as alt
 import numpy as np
+import math
 from folium.plugins import Draw
 from pyproj import Transformer
 from shapely.geometry import LineString
@@ -118,19 +119,47 @@ folium.GeoJson(
 
 axis_label_group = folium.FeatureGroup(name="As CODE labels", show=True)
 if "CODE" in axis_4326.columns:
+    def _label_point_and_angle(geom):
+        geom_type = geom.geom_type
+        line = geom
+        if geom_type == "MultiLineString":
+            parts = [g for g in geom.geoms if not g.is_empty]
+            if not parts:
+                return None, None
+            line = max(parts, key=lambda g: g.length)
+        if line.is_empty or line.length <= 0:
+            return None, None
+
+        mid = line.interpolate(0.5, normalized=True)
+        eps = min(0.02, max(0.002, 10.0 / max(line.length, 1.0)))
+        a = line.interpolate(max(0.0, 0.5 - eps), normalized=True)
+        b = line.interpolate(min(1.0, 0.5 + eps), normalized=True)
+
+        angle_deg = math.degrees(math.atan2((b.y - a.y), (b.x - a.x)))
+        if angle_deg > 90:
+            angle_deg -= 180
+        if angle_deg < -90:
+            angle_deg += 180
+        return mid, angle_deg
+
     code_rows = axis_4326[axis_4326["CODE"].notna()].copy()
     for _, axis_row in code_rows.iterrows():
         code_text = str(axis_row["CODE"]).strip()
         if not code_text:
             continue
-        rep_pt = axis_row.geometry.representative_point()
+
+        label_pt, angle_deg = _label_point_and_angle(axis_row.geometry)
+        if label_pt is None or angle_deg is None:
+            continue
+
         folium.Marker(
-            location=[rep_pt.y, rep_pt.x],
+            location=[label_pt.y, label_pt.x],
             icon=folium.DivIcon(
                 html=(
-                    f"<div style='font-size:10px;color:#0b3d91;"
-                    "background:rgba(255,255,255,0.7);padding:0 2px;"
-                    "border-radius:2px;'>"
+                    f"<div style='font-size:10px;color:#0b3d91;white-space:nowrap;"
+                    "background:rgba(255,255,255,0.75);padding:0 2px;"
+                    "border-radius:2px;display:inline-block;"
+                    f"transform: rotate({angle_deg:.1f}deg);transform-origin:center center;'>"
                     f"{code_text}</div>"
                 )
             ),
