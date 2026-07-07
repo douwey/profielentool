@@ -657,7 +657,7 @@ zone_chart = (
         y=alt.Y("zone_band:N", title=None, axis=None),
         color=alt.Color(
             "zone_type:N",
-            title="Zone",
+            legend=None,
             scale=alt.Scale(
                 domain=["Kernzone", "Beschermingszone", "Geen"],
                 range=["#ffd56a", "#80ed99", "#d9d9d9"],
