@@ -212,6 +212,13 @@ if crossing_distance is None:
 else:
     ahn_profile_df["distance_from_crossing_m"] = ahn_profile_df["distance_m"] - crossing_distance
 
+# Flip corrigeert de tekenrichting (binnen->buiten versus buiten->binnen)
+# voor de volledige profielopbouw.
+flip_profile_lr = bool(st.session_state.get("flip_profile_lr", False))
+ahn_profile_df["distance_for_profile_m"] = ahn_profile_df["distance_from_crossing_m"]
+if flip_profile_lr:
+    ahn_profile_df["distance_for_profile_m"] = -ahn_profile_df["distance_for_profile_m"]
+
 # Leggerprofiel (alleen binnen kernzone)
 # - Alleen voor profieltype A/B/C
 # - Kruin: x van -1 t/m 1 op dijktafelhoogte
@@ -227,7 +234,7 @@ if selected_axis is not None and "Dijktafelh" in selected_axis.index:
         if pd.notna(profiel_raw):
             profiel_code = str(profiel_raw).strip().upper()
 
-        x_vals = ahn_profile_df["distance_from_crossing_m"]
+        x_vals = ahn_profile_df["distance_for_profile_m"]
         mask_kernzone = ahn_profile_df["zone_type"].eq("Kernzone")
 
         # Basisprofiel zonder zoneclip
@@ -280,7 +287,7 @@ vrije_x_cross: float | None = None
 if selected_axis is not None and "Dijktafelh" in selected_axis.index:
     try:
         dijktafelhoogte = float(selected_axis["Dijktafelh"])
-        x_vals = ahn_profile_df["distance_from_crossing_m"]
+        x_vals = ahn_profile_df["distance_for_profile_m"]
         z_legger_vals = ahn_profile_df["z_legger"]
 
         mask_base = (x_vals >= 4.0) & z_legger_vals.notna()
@@ -349,12 +356,9 @@ if selected_axis is not None:
 
 st.subheader(f"Profielgrafiek - CODE: {graph_code} | Leggerprofiel: {graph_profiel}")
 st.caption("0 op de x-as is de kruising met de as-waterkering.")
-profile_df = ahn_profile_df.sort_values("distance_from_crossing_m").copy()
-
-flip_profile_lr = st.checkbox("Flip maaiveld links/rechts", value=False)
-profile_df["plot_distance_maaiveld"] = profile_df["distance_from_crossing_m"]
-if flip_profile_lr:
-    profile_df["plot_distance_maaiveld"] = -profile_df["plot_distance_maaiveld"]
+profile_df = ahn_profile_df.sort_values("distance_for_profile_m").copy()
+st.checkbox("Flip maaiveld links/rechts", key="flip_profile_lr")
+profile_df["plot_distance_maaiveld"] = profile_df["distance_for_profile_m"]
 profile_df = profile_df.sort_values("plot_distance_maaiveld")
 
 
@@ -383,8 +387,8 @@ x_query_state = st.session_state.get("x_query_interp", x_default)
 x_query = float(min(max(float(x_query_state), x_min_available), x_max_available))
 
 z_maaiveld_at_x = interpolate_at_x(profile_df, "plot_distance_maaiveld", "z", x_query)
-z_legger_at_x = interpolate_at_x(profile_df, "distance_from_crossing_m", "z_legger", x_query)
-z_vrije_ruimte_at_x = interpolate_at_x(profile_df, "distance_from_crossing_m", "z_vrije_ruimte", x_query)
+z_legger_at_x = interpolate_at_x(profile_df, "plot_distance_maaiveld", "z_legger", x_query)
+z_vrije_ruimte_at_x = interpolate_at_x(profile_df, "plot_distance_maaiveld", "z_vrije_ruimte", x_query)
 
 marker_rows: list[dict[str, object]] = []
 if z_maaiveld_at_x is not None:
@@ -486,41 +490,41 @@ if profile_df["z_vrije_ruimte"].notna().any():
     vrije_df = profile_df.dropna(subset=["z_vrije_ruimte"]).copy()
 
     extra_rows: list[dict[str, float]] = []
-    x_min_line = float(profile_df["distance_from_crossing_m"].min())
-    x_max_line = float(profile_df["distance_from_crossing_m"].max())
+    x_min_line = float(profile_df["distance_for_profile_m"].min())
+    x_max_line = float(profile_df["distance_for_profile_m"].max())
 
     # Dwing een exact startknooppunt op x=4 af voor de weergave van vrije ruimte.
     if selected_axis is not None and "Dijktafelh" in selected_axis.index and x_min_line <= 4.0 <= x_max_line:
         try:
             dth = float(selected_axis["Dijktafelh"])
-            extra_rows.append({"distance_from_crossing_m": 4.0, "z_vrije_ruimte": dth})
+            extra_rows.append({"plot_distance_maaiveld": 4.0, "z_vrije_ruimte": dth})
         except (TypeError, ValueError):
             pass
 
     # Dwing ook een exact knooppunt op het berekende kruispunt vrije ruimte <-> legger af.
     if vrije_x_cross is not None and x_min_line <= vrije_x_cross <= x_max_line:
-        z_legger_cross = interpolate_at_x(profile_df, "distance_from_crossing_m", "z_legger", vrije_x_cross)
+        z_legger_cross = interpolate_at_x(profile_df, "distance_for_profile_m", "z_legger", vrije_x_cross)
         if z_legger_cross is not None:
             extra_rows.append(
                 {
-                    "distance_from_crossing_m": float(vrije_x_cross),
+                    "plot_distance_maaiveld": float(vrije_x_cross),
                     "z_vrije_ruimte": float(z_legger_cross),
                 }
             )
 
     if extra_rows:
         vrije_df = pd.concat([vrije_df, pd.DataFrame(extra_rows)], ignore_index=True)
-        vrije_df = vrije_df.sort_values("distance_from_crossing_m", kind="mergesort")
-        vrije_df = vrije_df.drop_duplicates(subset=["distance_from_crossing_m"], keep="last")
+        vrije_df = vrije_df.sort_values("plot_distance_maaiveld", kind="mergesort")
+        vrije_df = vrije_df.drop_duplicates(subset=["plot_distance_maaiveld"], keep="last")
 
     vrije_chart = (
         alt.Chart(vrije_df)
         .mark_line(color="#1d4ed8", strokeWidth=2)
         .encode(
-            x=alt.X("distance_from_crossing_m:Q", title=None, scale=alt.Scale(domain=[x_min, x_max], nice=False) if scale_mode == "Gelijke schaal (x=y)" else alt.Undefined),
+            x=x_encoding_line,
             y=alt.Y("z_vrije_ruimte:Q", title="Hoogte (m NAP)"),
             tooltip=[
-                alt.Tooltip("distance_from_crossing_m:Q", title="Afstand weergegeven (m)", format=".2f"),
+                alt.Tooltip("plot_distance_maaiveld:Q", title="Afstand weergegeven (m)", format=".2f"),
                 alt.Tooltip("z_vrije_ruimte:Q", title="Vrije ruimte (m)", format=".2f"),
             ],
         )
@@ -534,10 +538,10 @@ if profile_df["z_legger"].notna().any():
         alt.Chart(legger_df)
         .mark_line(color="#c1121f", strokeWidth=2, strokeDash=[6, 4])
         .encode(
-            x=alt.X("distance_from_crossing_m:Q", title=None, scale=alt.Scale(domain=[x_min, x_max], nice=False) if scale_mode == "Gelijke schaal (x=y)" else alt.Undefined),
+            x=x_encoding_line,
             y=alt.Y("z_legger:Q", title="Hoogte (m NAP)"),
             tooltip=[
-                alt.Tooltip("distance_from_crossing_m:Q", title="Afstand weergegeven (m)", format=".2f"),
+                alt.Tooltip("plot_distance_maaiveld:Q", title="Afstand weergegeven (m)", format=".2f"),
                 alt.Tooltip("z_legger:Q", title="Leggerhoogte (m)", format=".2f"),
             ],
         )
@@ -660,8 +664,8 @@ x_query_input = st.number_input(
 )
 
 z_maaiveld_out = interpolate_at_x(profile_df, "plot_distance_maaiveld", "z", float(x_query_input))
-z_legger_out = interpolate_at_x(profile_df, "distance_from_crossing_m", "z_legger", float(x_query_input))
-z_vrije_ruimte_out = interpolate_at_x(profile_df, "distance_from_crossing_m", "z_vrije_ruimte", float(x_query_input))
+z_legger_out = interpolate_at_x(profile_df, "plot_distance_maaiveld", "z_legger", float(x_query_input))
+z_vrije_ruimte_out = interpolate_at_x(profile_df, "plot_distance_maaiveld", "z_vrije_ruimte", float(x_query_input))
 
 interp_rows = [
     {"lijn": "Maaiveld", "z": z_maaiveld_out},
