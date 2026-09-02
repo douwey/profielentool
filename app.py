@@ -38,13 +38,28 @@ st.write(
 
 st.caption("Databronnen: Waterkeringen FeatureServer (online) en AHN via PDOK.")
 
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def get_regionale_layers_cached() -> dict[str, gpd.GeoDataFrame]:
+    return load_regionale_layers_from_remote()
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def get_overige_layers_cached() -> dict[str, gpd.GeoDataFrame]:
+    return load_overige_layers_from_local()
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def get_local_axis_lookup_cached() -> pd.DataFrame:
+    return load_local_axis_attribute_lookup()
+
 try:
-    regionale_layers = load_regionale_layers_from_remote()
+    regionale_layers = get_regionale_layers_cached()
 except Exception as exc:
     st.error(f"Online bron niet beschikbaar: {exc}")
     st.stop()
 
-overige_layers = load_overige_layers_from_local()
+overige_layers = get_overige_layers_cached()
 if overige_layers:
     for key, gdf_extra in overige_layers.items():
         if key in regionale_layers:
@@ -63,7 +78,7 @@ kernzone_gdf = regionale_layers["Kernzone_BWK"]
 beschermingszone_gdf = regionale_layers["Beschermingszone_BWK"]
 
 try:
-    local_axis_lookup = load_local_axis_attribute_lookup()
+    local_axis_lookup = get_local_axis_lookup_cached()
     axis_gdf = enrich_axis_with_local_attributes(axis_gdf, local_axis_lookup)
 except Exception as exc:
     st.warning(f"Verrijking met lokale dijktafel/profiel niet beschikbaar: {exc}")
@@ -75,12 +90,20 @@ center = axis_4326.union_all().centroid
 
 st.subheader("Kaart")
 st.caption("Teken een lijn (maximaal 200 m) voor de profielopbouw.")
-map_obj = folium.Map(location=[center.y, center.x], zoom_start=14, tiles=None)
+show_axis_labels = st.checkbox("Toon CODE-labels op kaart (kan trager zijn)", value=False)
+map_obj = folium.Map(
+    location=[center.y, center.x],
+    zoom_start=14,
+    max_zoom=22,
+    tiles=None,
+    prefer_canvas=True,
+)
 
 folium.TileLayer(
     tiles="OpenStreetMap",
     name="OpenStreetMap",
     attr="&copy; OpenStreetMap contributors",
+    max_zoom=22,
     control=True,
     show=True,
 ).add_to(map_obj)
@@ -89,6 +112,7 @@ folium.TileLayer(
     tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     attr="Esri",
     name="Esri World Imagery",
+    max_zoom=22,
     control=True,
     show=False,
 ).add_to(map_obj)
@@ -132,8 +156,8 @@ folium.GeoJson(
     **axis_geojson_kwargs,
 ).add_to(map_obj)
 
-axis_label_group = folium.FeatureGroup(name="As CODE labels", show=True)
-if "CODE" in axis_4326.columns:
+axis_label_group = folium.FeatureGroup(name="As CODE labels", show=show_axis_labels)
+if show_axis_labels and "CODE" in axis_4326.columns:
     code_rows = axis_4326[axis_4326["CODE"].notna()].copy()
     for _, axis_row in code_rows.iterrows():
         code_text = str(axis_row["CODE"]).strip()
