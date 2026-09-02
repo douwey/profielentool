@@ -33,7 +33,7 @@ st.set_page_config(page_title="Dwarsprofielen Tool", page_icon="📈", layout="w
 @st.cache_data(show_spinner=False, ttl=3600)
 def get_ahn_version_label() -> str:
     try:
-        generation, coverage = get_ahn_service_info()
+        _, coverage = get_ahn_service_info()
         coverage_norm = str(coverage).strip().lower()
         resolution_label = None
         if coverage_norm.startswith("dtm_") and coverage_norm.endswith("m"):
@@ -45,13 +45,9 @@ def get_ahn_version_label() -> str:
                     resolution = str(int(numeric_part)).replace(".", ",")
                 resolution_label = f"DTM {resolution} m"
 
-        if generation and resolution_label:
-            return f"{generation} - {resolution_label} ({coverage})"
-        if generation:
-            return f"{generation} ({coverage})"
         if resolution_label:
-            return f"{resolution_label} ({coverage})"
-        return f"AHN ({coverage})"
+            return f"{coverage} - {resolution_label}"
+        return str(coverage)
     except Exception:
         return "onbekend"
 
