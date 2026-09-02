@@ -89,6 +89,7 @@ def find_intersecting_lines(profile_line: LineString, lines_gdf: gpd.GeoDataFram
         return lines_gdf.iloc[0:0].copy()
 
     try:
+        # Use the spatial index first to avoid testing all features.
         candidate_idx = lines_gdf.sindex.query(profile_line, predicate="intersects")
         if len(candidate_idx) == 0:
             return lines_gdf.iloc[0:0].copy()
@@ -96,6 +97,7 @@ def find_intersecting_lines(profile_line: LineString, lines_gdf: gpd.GeoDataFram
         mask = candidates.geometry.intersects(profile_line)
         return candidates.loc[mask].copy()
     except Exception:
+        # Fallback for environments where spatial index is unavailable.
         mask = lines_gdf.geometry.intersects(profile_line)
         return lines_gdf.loc[mask].copy()
 
