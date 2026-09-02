@@ -46,7 +46,7 @@ def get_ahn_version_label() -> str:
                 resolution_label = f"DTM {resolution} m"
 
         if resolution_label:
-            return f"{coverage} - {resolution_label}"
+            return resolution_label
         return str(coverage)
     except Exception:
         return "onbekend"
