@@ -14,7 +14,7 @@ from pyproj import Transformer
 from shapely.geometry import LineString
 from streamlit_folium import st_folium
 
-from profielentool.ahn import sample_ahn_profile
+from profielentool.ahn import get_latest_ahn_dtm_coverage, sample_ahn_profile
 from profielentool.io import (
     classify_points_by_zone,
     enrich_axis_with_local_attributes,
@@ -29,7 +29,17 @@ from profielentool.io import (
 
 st.set_page_config(page_title="Dwarsprofielen Tool", page_icon="📈", layout="wide")
 
-st.title("Dwarsprofielen uit kaart en AHN")
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def get_ahn_version_label() -> str:
+    try:
+        return get_latest_ahn_dtm_coverage()
+    except Exception:
+        return "onbekend"
+
+
+ahn_version_label = get_ahn_version_label()
+st.title(f"Dwarsprofielen uit kaart en AHN ({ahn_version_label})")
 st.write(
     "Teken een lijn op de kaart waar je een dwarsprofiel wilt maken. "
     "Indien beschikbaar wordt automatisch gekoppeld met het bijbehorende "
