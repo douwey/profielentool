@@ -38,131 +38,49 @@ st.write(
 
 st.caption("Databronnen: Waterkeringen FeatureServer (online) en AHN via PDOK.")
 
-
-@st.cache_resource(show_spinner=False)
-def get_prepared_layers() -> tuple[dict[str, gpd.GeoDataFrame], str | None]:
-    regionale_layers = load_regionale_layers_from_remote()
-
-    overige_layers = load_overige_layers_from_local()
-    if overige_layers:
-        for key, gdf_extra in overige_layers.items():
-            if key in regionale_layers:
-                base_gdf = regionale_layers[key]
-                if base_gdf.crs is not None and gdf_extra.crs is not None and str(base_gdf.crs) != str(gdf_extra.crs):
-                    gdf_extra = gdf_extra.to_crs(base_gdf.crs)
-                regionale_layers[key] = gpd.GeoDataFrame(
-                    pd.concat([base_gdf, gdf_extra], ignore_index=True),
-                    crs=base_gdf.crs,
-                )
-            else:
-                regionale_layers[key] = gdf_extra
-
-    axis_gdf = regionale_layers["As_waterkering_BWK"]
-    kernzone_gdf = regionale_layers["Kernzone_BWK"]
-    beschermingszone_gdf = regionale_layers["Beschermingszone_BWK"]
-
-    warning_text = None
-    try:
-        local_axis_lookup = load_local_axis_attribute_lookup()
-        axis_gdf = enrich_axis_with_local_attributes(axis_gdf, local_axis_lookup)
-    except Exception as exc:
-        warning_text = f"Verrijking met lokale dijktafel/profiel niet beschikbaar: {exc}"
-
-    axis_4326 = axis_gdf.to_crs("EPSG:4326")
-    kernzone_4326 = kernzone_gdf.to_crs("EPSG:4326")
-    bescherm_4326 = beschermingszone_gdf.to_crs("EPSG:4326")
-    center = axis_4326.union_all().centroid
-
-    prepared = {
-        "axis_gdf": axis_gdf,
-        "kernzone_gdf": kernzone_gdf,
-        "beschermingszone_gdf": beschermingszone_gdf,
-        "axis_4326": axis_4326,
-        "kernzone_4326": kernzone_4326,
-        "bescherm_4326": bescherm_4326,
-        "center": center,
-        "axis_for_rd": axis_gdf.to_crs("EPSG:28992"),
-        "kern_for_rd": kernzone_gdf.to_crs("EPSG:28992"),
-        "bescherm_for_rd": beschermingszone_gdf.to_crs("EPSG:28992"),
-    }
-    return prepared, warning_text
-
-
-@st.cache_data(show_spinner=False, ttl=3600)
-def get_ahn_profile_cached(
-    rd_coords_key: tuple[tuple[float, float], ...],
-    step_m: float,
-    max_length_m: float,
-) -> tuple[pd.DataFrame, str]:
-    line = LineString(rd_coords_key)
-    return sample_ahn_profile(
-        line,
-        step_m=step_m,
-        max_length_m=max_length_m,
-    )
-
-
-def get_latest_drawn_linestring(map_state: dict | None) -> dict | None:
-    """Return the most recent drawn LineString feature from streamlit-folium state."""
-    if not map_state:
-        return None
-
-    candidates: list[dict] = []
-
-    last_active = map_state.get("last_active_drawing")
-    if isinstance(last_active, dict):
-        candidates.append(last_active)
-
-    last_drawn = map_state.get("last_drawn")
-    if isinstance(last_drawn, dict):
-        candidates.append(last_drawn)
-
-    all_drawings = map_state.get("all_drawings")
-    if isinstance(all_drawings, list):
-        for feature in reversed(all_drawings):
-            if isinstance(feature, dict):
-                candidates.append(feature)
-
-    for feature in candidates:
-        geometry = feature.get("geometry", {})
-        if geometry.get("type") == "LineString":
-            return feature
-    return None
-
-
 try:
-    prepared_layers, warning_text = get_prepared_layers()
+    regionale_layers = load_regionale_layers_from_remote()
 except Exception as exc:
     st.error(f"Online bron niet beschikbaar: {exc}")
     st.stop()
 
-if warning_text:
-    st.warning(warning_text)
+overige_layers = load_overige_layers_from_local()
+if overige_layers:
+    for key, gdf_extra in overige_layers.items():
+        if key in regionale_layers:
+            base_gdf = regionale_layers[key]
+            if base_gdf.crs is not None and gdf_extra.crs is not None and str(base_gdf.crs) != str(gdf_extra.crs):
+                gdf_extra = gdf_extra.to_crs(base_gdf.crs)
+            regionale_layers[key] = gpd.GeoDataFrame(
+                pd.concat([base_gdf, gdf_extra], ignore_index=True),
+                crs=base_gdf.crs,
+            )
+        else:
+            regionale_layers[key] = gdf_extra
 
-axis_gdf = prepared_layers["axis_gdf"]
-kernzone_gdf = prepared_layers["kernzone_gdf"]
-beschermingszone_gdf = prepared_layers["beschermingszone_gdf"]
-axis_4326 = prepared_layers["axis_4326"]
-kernzone_4326 = prepared_layers["kernzone_4326"]
-bescherm_4326 = prepared_layers["bescherm_4326"]
-center = prepared_layers["center"]
+axis_gdf = regionale_layers["As_waterkering_BWK"]
+kernzone_gdf = regionale_layers["Kernzone_BWK"]
+beschermingszone_gdf = regionale_layers["Beschermingszone_BWK"]
+
+try:
+    local_axis_lookup = load_local_axis_attribute_lookup()
+    axis_gdf = enrich_axis_with_local_attributes(axis_gdf, local_axis_lookup)
+except Exception as exc:
+    st.warning(f"Verrijking met lokale dijktafel/profiel niet beschikbaar: {exc}")
+
+axis_4326 = axis_gdf.to_crs("EPSG:4326")
+kernzone_4326 = kernzone_gdf.to_crs("EPSG:4326")
+bescherm_4326 = beschermingszone_gdf.to_crs("EPSG:4326")
+center = axis_4326.union_all().centroid
 
 st.subheader("Kaart")
 st.caption("Teken een lijn (maximaal 200 m) voor de profielopbouw.")
-show_axis_labels = False
-map_obj = folium.Map(
-    location=[center.y, center.x],
-    zoom_start=14,
-    max_zoom=22,
-    tiles=None,
-    prefer_canvas=True,
-)
+map_obj = folium.Map(location=[center.y, center.x], zoom_start=14, tiles=None)
 
 folium.TileLayer(
     tiles="OpenStreetMap",
-    name="Topografie",
+    name="OpenStreetMap",
     attr="&copy; OpenStreetMap contributors",
-    max_zoom=22,
     control=True,
     show=True,
 ).add_to(map_obj)
@@ -170,8 +88,7 @@ folium.TileLayer(
 folium.TileLayer(
     tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     attr="Esri",
-    name="Luchtfoto",
-    max_zoom=22,
+    name="Esri World Imagery",
     control=True,
     show=False,
 ).add_to(map_obj)
@@ -215,8 +132,8 @@ folium.GeoJson(
     **axis_geojson_kwargs,
 ).add_to(map_obj)
 
-axis_label_group = folium.FeatureGroup(name="As CODE labels", show=show_axis_labels)
-if show_axis_labels and "CODE" in axis_4326.columns:
+axis_label_group = folium.FeatureGroup(name="As CODE labels", show=True)
+if "CODE" in axis_4326.columns:
     code_rows = axis_4326[axis_4326["CODE"].notna()].copy()
     for _, axis_row in code_rows.iterrows():
         code_text = str(axis_row["CODE"]).strip()
@@ -271,7 +188,7 @@ Draw(
 folium.LayerControl(collapsed=False, position="bottomleft").add_to(map_obj)
 map_state = st_folium(map_obj, height=550, use_container_width=True)
 
-drawn_feature = get_latest_drawn_linestring(map_state)
+drawn_feature = map_state.get("last_active_drawing") if map_state else None
 if not drawn_feature:
     st.info("Teken een lijn op de kaart om het AHN-profiel op te halen.")
     st.stop()
@@ -290,19 +207,17 @@ if profile_line_rd.length > 200:
     st.error("De lijn is langer dan 200 m. Teken een kortere lijn.")
     st.stop()
 
-axis_for_rd = prepared_layers["axis_for_rd"]
-kern_for_rd = prepared_layers["kern_for_rd"]
-bescherm_for_rd = prepared_layers["bescherm_for_rd"]
+axis_for_rd = axis_gdf.to_crs("EPSG:28992")
+kern_for_rd = kernzone_gdf.to_crs("EPSG:28992")
+bescherm_for_rd = beschermingszone_gdf.to_crs("EPSG:28992")
 
 try:
     with st.spinner("AHN-hoogtes ophalen..."):
-        coords_key = tuple((round(x, 3), round(y, 3)) for x, y in rd_coords)
-        ahn_profile_df, ahn_coverage = get_ahn_profile_cached(
-            coords_key,
+        ahn_profile_df, ahn_coverage = sample_ahn_profile(
+            profile_line_rd,
             step_m=0.5,
             max_length_m=max(250.0, profile_line_rd.length + 5.0),
         )
-        ahn_profile_df = ahn_profile_df.copy()
 except Exception as exc:
     st.error(f"Fout bij AHN-profielopbouw: {exc}")
     st.stop()
