@@ -75,7 +75,23 @@ center = axis_4326.union_all().centroid
 
 st.subheader("Kaart")
 st.caption("Teken een lijn (maximaal 200 m) voor de profielopbouw.")
-map_obj = folium.Map(location=[center.y, center.x], zoom_start=14, tiles="CartoDB positron")
+map_obj = folium.Map(location=[center.y, center.x], zoom_start=14, tiles=None)
+
+folium.TileLayer(
+    tiles="OpenStreetMap",
+    name="OpenStreetMap",
+    attr="&copy; OpenStreetMap contributors",
+    control=True,
+    show=True,
+).add_to(map_obj)
+
+folium.TileLayer(
+    tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attr="Esri",
+    name="Esri World Imagery",
+    control=True,
+    show=False,
+).add_to(map_obj)
 
 folium.GeoJson(
     kernzone_4326,
