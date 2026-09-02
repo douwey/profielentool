@@ -13,8 +13,8 @@ AHN_WCS_URL = "https://service.pdok.nl/rws/ahn/wcs/v1_0"
 DEFAULT_AHN_COVERAGE = "dtm_05m"
 
 
-def get_latest_ahn_dtm_coverage() -> str:
-    """Read WCS capabilities and return the latest AHN DTM coverage id."""
+def _fetch_ahn_capabilities_xml() -> str:
+    """Fetch WCS capabilities XML from PDOK."""
     params = {
         "SERVICE": "WCS",
         "VERSION": "1.0.0",
@@ -22,12 +22,44 @@ def get_latest_ahn_dtm_coverage() -> str:
     }
     response = requests.get(AHN_WCS_URL, params=params, timeout=30)
     response.raise_for_status()
+    return response.text
 
-    xml = response.text
-    # PDOK AHN WCS exposes DTM as coverage name "dtm_05m".
+
+def _parse_ahn_generation(xml: str) -> str | None:
+    """Best-effort extraction of AHN generation label (e.g. AHN5)."""
+    xml_l = xml.lower()
+    patterns = [
+        r"\bahn\s*([0-9]{1,2})\b",
+        r"actueel[_\-]?ahn([0-9]{1,2})",
+        r"\bahn([0-9]{1,2})\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, xml_l, flags=re.IGNORECASE)
+        if match:
+            return f"AHN{int(match.group(1))}"
+    return None
+
+
+def get_ahn_service_info() -> tuple[str | None, str]:
+    """Return AHN generation label (if found) and DTM coverage id."""
+    xml = _fetch_ahn_capabilities_xml()
+
+    coverage = DEFAULT_AHN_COVERAGE
     if re.search(r"<name>dtm_05m</name>", xml, flags=re.IGNORECASE):
-        return "dtm_05m"
-    return DEFAULT_AHN_COVERAGE
+        coverage = "dtm_05m"
+    else:
+        matches = re.findall(r"<name>(dtm_[0-9]+m)</name>", xml, flags=re.IGNORECASE)
+        if matches:
+            coverage = matches[0].lower()
+
+    generation = _parse_ahn_generation(xml)
+    return generation, coverage
+
+
+def get_latest_ahn_dtm_coverage() -> str:
+    """Read WCS capabilities and return the latest AHN DTM coverage id."""
+    _, coverage = get_ahn_service_info()
+    return coverage
 
 
 def sample_distances(length_m: float, step_m: float) -> np.ndarray:
