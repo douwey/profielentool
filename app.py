@@ -95,6 +95,14 @@ except Exception:
     center_lat = 52.0
     center_lon = 5.3
 
+if not np.isfinite(center_lat) or not np.isfinite(center_lon):
+    center_lat = 52.0
+    center_lon = 5.3
+
+if center_lat < -90 or center_lat > 90 or center_lon < -180 or center_lon > 180:
+    center_lat = 52.0
+    center_lon = 5.3
+
 st.subheader("Kaart")
 st.caption("Teken een lijn (maximaal 200 m) voor de profielopbouw.")
 map_obj = folium.Map(location=[center_lat, center_lon], zoom_start=14, max_zoom=22, tiles=None, prefer_canvas=True)
@@ -159,6 +167,14 @@ folium.GeoJson(
 axis_label_group = folium.FeatureGroup(name="As CODE labels", show=True)
 if "CODE" in axis_4326.columns:
     code_rows = axis_4326[axis_4326["CODE"].notna()].copy()
+    max_labels = 1200
+    if len(code_rows) > max_labels:
+        st.warning(
+            f"CODE-labels tijdelijk beperkt voor performance ({len(code_rows)} lijnen). "
+            f"Toon eerste {max_labels} labels."
+        )
+        code_rows = code_rows.iloc[:max_labels]
+
     for _, axis_row in code_rows.iterrows():
         code_text = str(axis_row["CODE"]).strip()
         if not code_text:
@@ -174,27 +190,30 @@ if "CODE" in axis_4326.columns:
         if line.is_empty or line.length <= 0:
             continue
 
-        line_coords = [(pt[1], pt[0]) for pt in line.coords]
-        line_feature = folium.PolyLine(locations=line_coords, color="transparent", weight=0, opacity=0)
-        line_feature.add_to(axis_label_group)
+        try:
+            line_coords = [(pt[1], pt[0]) for pt in line.coords]
+            line_feature = folium.PolyLine(locations=line_coords, color="transparent", weight=0, opacity=0)
+            line_feature.add_to(axis_label_group)
 
-        PolyLineTextPath(
-            line_feature,
-            f"  {code_text}  ",
-            repeat=False,
-            center=True,
-            offset=6,
-            orientation=0,
-            attributes={
-                "fill": "#0b3d91",
-                "font-size": "10",
-                "font-weight": "600",
-                "white-space": "nowrap",
-                "paint-order": "stroke",
-                "stroke": "#ffffff",
-                "stroke-width": "2",
-            },
-        ).add_to(axis_label_group)
+            PolyLineTextPath(
+                line_feature,
+                f"  {code_text}  ",
+                repeat=False,
+                center=True,
+                offset=6,
+                orientation=0,
+                attributes={
+                    "fill": "#0b3d91",
+                    "font-size": "10",
+                    "font-weight": "600",
+                    "white-space": "nowrap",
+                    "paint-order": "stroke",
+                    "stroke": "#ffffff",
+                    "stroke-width": "2",
+                },
+            ).add_to(axis_label_group)
+        except Exception:
+            continue
 axis_label_group.add_to(map_obj)
 
 Draw(
