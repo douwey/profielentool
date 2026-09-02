@@ -102,6 +102,34 @@ def get_ahn_profile_cached(
     )
 
 
+def get_latest_drawn_linestring(map_state: dict | None) -> dict | None:
+    """Return the most recent drawn LineString feature from streamlit-folium state."""
+    if not map_state:
+        return None
+
+    candidates: list[dict] = []
+
+    last_active = map_state.get("last_active_drawing")
+    if isinstance(last_active, dict):
+        candidates.append(last_active)
+
+    last_drawn = map_state.get("last_drawn")
+    if isinstance(last_drawn, dict):
+        candidates.append(last_drawn)
+
+    all_drawings = map_state.get("all_drawings")
+    if isinstance(all_drawings, list):
+        for feature in reversed(all_drawings):
+            if isinstance(feature, dict):
+                candidates.append(feature)
+
+    for feature in candidates:
+        geometry = feature.get("geometry", {})
+        if geometry.get("type") == "LineString":
+            return feature
+    return None
+
+
 try:
     prepared_layers, warning_text = get_prepared_layers()
 except Exception as exc:
@@ -121,7 +149,7 @@ center = prepared_layers["center"]
 
 st.subheader("Kaart")
 st.caption("Teken een lijn (maximaal 200 m) voor de profielopbouw.")
-show_axis_labels = st.checkbox("Toon CODE-labels op kaart (kan trager zijn)", value=False)
+show_axis_labels = False
 map_obj = folium.Map(
     location=[center.y, center.x],
     zoom_start=14,
@@ -243,7 +271,7 @@ Draw(
 folium.LayerControl(collapsed=False, position="bottomleft").add_to(map_obj)
 map_state = st_folium(map_obj, height=550, use_container_width=True)
 
-drawn_feature = map_state.get("last_active_drawing") if map_state else None
+drawn_feature = get_latest_drawn_linestring(map_state)
 if not drawn_feature:
     st.info("Teken een lijn op de kaart om het AHN-profiel op te halen.")
     st.stop()
